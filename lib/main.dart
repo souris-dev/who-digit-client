@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as imgModule;
 
 void main() {
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -76,7 +77,7 @@ class _MyHomePageState extends State<MyHomePage> {
     loggr.d('Contacting server...');
     List<String> pred;
     var client = http.Client();
-    var uri = 'https://5000-dot-11753077-dot-devshell.appspot.com/predict?pic=' + base64EncodedPic;
+    var uri = 'https://who-digit-webapp.herokuapp.com/predict?pic=' + base64EncodedPic;
 
     try {
       loggr.d('Contacting server...');
@@ -86,9 +87,9 @@ class _MyHomePageState extends State<MyHomePage> {
       if (uriResponse.statusCode == 200) {
         // 200 OK
         var loggr = Logger();
-        loggr.d('Predictions from server: ' + jsonDecode(uriResponse.body)['pred']);
-        pred = <String>[jsonDecode(uriResponse.body)['pred'][0], jsonDecode(uriResponse.body)['pred'][1]];
-        loggr.d('Predictions local: ' + pred.toString());
+        loggr.d('Predictions from server: ' + uriResponse.body);
+        //pred = <String>[jsonDecode(uriResponse.body)['pred'][0], jsonDecode(uriResponse.body)['pred'][1]];
+        //loggr.d('Predictions local: ' + pred.toString());
       }
       else {
         throw Exception('Server error! Error code: ' + uriResponse.statusCode.toString());
@@ -105,32 +106,68 @@ class _MyHomePageState extends State<MyHomePage> {
     return pred;
   }
 
+  Canvas getPaintedCanvas(PictureRecorder recorder) {
+    Canvas canvas = Canvas(recorder);
+
+    Paint paint = Paint();
+
+    paint.color = Colors.white;
+    paint.strokeCap = StrokeCap.round;
+    paint.strokeWidth = 28.0;
+
+    canvas.drawColor(Colors.black, BlendMode.src);
+
+    for (int i = 0; i < points.length - 1; i++){
+      if (points[i] != null && points[i + 1] != null) {
+        canvas.drawLine(points[i], points[i + 1], paint);
+      }
+    }
+
+    return canvas;
+  }
+
   Future<void> predict() async {
+    if (!askedToPredict) {
+      return;
+    }
+    else {
+      askedToPredict = false;
+    }
+
     // Retrieve the image
     var loggr = Logger();
-    PictureRecorder recorder = PictureRecorder();
-    Canvas canvas = Canvas(recorder);
 
     loggr.d('Started prediction process...');
     String base46EncodedPic;
 
     try {
       loggr.d('Retrieving image...');
-      drawArea.paint(canvas, Size.fromWidth(300)); // should not be hardcoded
-      Picture pic = recorder.endRecording();
 
-      var img = await pic.toImage(28, 28);
-      // 28 x 28 because the NN at the server works on that dimension
-      // It's better to decrease the size here for fast transmission to the server
+      var pictureRecorder = new PictureRecorder();
+      Canvas canvas = new Canvas(pictureRecorder);
+      Handwriter painter = Handwriter(points);
+
+      var size = Size.fromWidth(300); // TODO: Should not be hardcoded!
+      // if you pass a smaller size here, it cuts off the lines
+      painter.paint(canvas, size);
+      // if you use a smaller size for toImage, it also cuts off the lines - so I've
+      // done that in here as well, as this is the only place it's easy to get the width & height.
+      var img = await pictureRecorder.endRecording().toImage(300, 300); // TODO: 300 should not be hardcoded!
 
       ByteData imgData = await img.toByteData(format: ImageByteFormat.png);
       Uint8List imgDataList = imgData.buffer.asUint8List();
 
+      imgModule.Image imgNew = imgModule.decodePng(imgDataList);
+      imgNew = imgModule.copyResize(imgNew, width: 28, height: 28, interpolation: imgModule.Interpolation.nearest);
+
+      imgDataList = imgNew.getBytes(format: imgModule.Format.rgb);
+
       base46EncodedPic = base64Encode(imgDataList);
 
-      loggr.d('Image retrieved as string: ' + base46EncodedPic);
+      loggr.d('Image retrieved as string: ' + base46EncodedPic.length.toString());
     } catch(e) {
       loggr.e('Error in retrieving and encoding the picture!');
+      loggr.e(e);
     }
 
     if (base46EncodedPic != null) {
@@ -138,7 +175,6 @@ class _MyHomePageState extends State<MyHomePage> {
       var predVal = await getPrediction(base46EncodedPic);
 
       setState(() {
-        askedToPredict = false;
         if (predVal != null) {
           predictedVal[0] = int.parse(predVal[0]);
           predictedVal[1] = int.parse(predVal[1]);
@@ -220,14 +256,14 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     ];
 
-    if (askedToPredict == true) {
+    if (true) {
       innerWidgets.add(FutureBuilder(
         future: predict(),
 
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
             return Text(
-              predictedVal != null ? 'Predictions: $predictedVal[0], $predictedVal[1]' : 'No prediction!'
+              predictedVal != null ? 'Predictions: $predictedVal[0], $predictedVal[1]' : ''
             );
           }
           else {
@@ -278,11 +314,9 @@ class Handwriter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     Paint paint = Paint();
 
-    var loggr = Logger();
-
     paint.color = Colors.white;
     paint.strokeCap = StrokeCap.round;
-    paint.strokeWidth = 12.0;
+    paint.strokeWidth = 22.0;
 
     for (int i = 0; i < points.length - 1; i++){
       if (points[i] != null && points[i + 1] != null) {
