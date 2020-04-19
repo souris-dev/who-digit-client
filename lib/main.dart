@@ -5,6 +5,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:logger/logger.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:http/http.dart' as http;
@@ -54,14 +55,47 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   List<Offset> points = <Offset>[];
   Handwriter drawArea;
-  List<int> predictedVal;
+  List<String> predictedVal;
 
   bool askedToPredict = false;
+  bool pingedAndVerified = false;
+
+  void pingAndVerify() async {
+      Fluttertoast.showToast(msg: 'Initializing...', backgroundColor: Colors.indigo, textColor: Colors.white);
+      var loggr = Logger();
+      var cl = http.Client();
+      var uri = 'https://who-digit-webapp.herokuapp.com/';
+
+      try {
+          loggr.d('Inititating connection with server...');
+          var resp = await cl.get(uri);
+
+          if (resp.statusCode == 200) {
+              pingedAndVerified = true;
+              loggr.d('Initialization successful!');
+          }
+          else {
+              throw Exception('Init failed: server error ' + resp.statusCode.toString());
+          }
+      } catch(e) {
+          loggr.e(e);
+          loggr.e('Initialization failed!');
+          Fluttertoast.showToast(msg: 'Initialization failed!', backgroundColor: Colors.red, textColor: Colors.white);
+          Fluttertoast.showToast(msg: 'Check your internet connection', backgroundColor: Colors.deepOrangeAccent, textColor: Colors.white);
+      } finally {
+          cl.close();
+      }
+  }
 
   @override
   void initState() {
     super.initState();
     drawArea = Handwriter(points);
+
+    // We'll ping the server once to wake the server up
+    // and check that the internet and server are working
+
+    pingAndVerify();
   }
 
   void _clear() {
@@ -69,6 +103,7 @@ class _MyHomePageState extends State<MyHomePage> {
       points.clear();
       drawArea = Handwriter(points);
       askedToPredict = false;
+      predictedVal = null;
     });
   }
 
@@ -88,8 +123,12 @@ class _MyHomePageState extends State<MyHomePage> {
         // 200 OK
         var loggr = Logger();
         loggr.d('Predictions from server: ' + uriResponse.body);
-        //pred = <String>[jsonDecode(uriResponse.body)['pred'][0], jsonDecode(uriResponse.body)['pred'][1]];
-        //loggr.d('Predictions local: ' + pred.toString());
+        pred = <String>[jsonDecode(uriResponse.body)['pred'][0], jsonDecode(uriResponse.body)['pred'][1]];
+        loggr.d('Predictions local: ' + pred.toString());
+
+        predictedVal = pred;
+
+        Fluttertoast.showToast(msg: 'Predicted value: ' + predictedVal[0], textColor: Colors.white, backgroundColor: Colors.deepPurple);
       }
       else {
         throw Exception('Server error! Error code: ' + uriResponse.statusCode.toString());
@@ -98,7 +137,12 @@ class _MyHomePageState extends State<MyHomePage> {
       var loggr = Logger();
       loggr.e("Couldn't get prediction from the server!");
       loggr.e(e.toString());
+      Fluttertoast.showToast(msg: 'Failed to get prediction!', backgroundColor: Colors.red, textColor: Colors.white);
 
+      if (e.toString().contains('server'))
+        Fluttertoast.showToast(msg: e, backgroundColor: Colors.red, textColor: Colors.white);
+      else
+        Fluttertoast.showToast(msg: 'Check your internet connection', backgroundColor: Colors.deepOrangeAccent, textColor: Colors.white);
     } finally {
       client.close();
     }
@@ -134,6 +178,11 @@ class _MyHomePageState extends State<MyHomePage> {
       askedToPredict = false;
     }
 
+    if (points.length == 0) {
+      Fluttertoast.showToast(msg: 'Please draw something!', backgroundColor: Colors.brown, textColor: Colors.white);
+      return;
+    }
+
     // Retrieve the image
     var loggr = Logger();
 
@@ -157,27 +206,30 @@ class _MyHomePageState extends State<MyHomePage> {
       ByteData imgData = await img.toByteData(format: ImageByteFormat.png);
       Uint8List imgDataList = imgData.buffer.asUint8List();
 
-      imgModule.Image imgNew = imgModule.decodePng(imgDataList);
-      imgNew = imgModule.copyResize(imgNew, width: 28, height: 28, interpolation: imgModule.Interpolation.nearest);
+      //imgModule.Image imgNew = imgModule.decodePng(imgDataList);
+      //imgNew = imgModule.copyResize(imgNew, width: 28, height: 28, interpolation: imgModule.Interpolation.nearest);
 
-      imgDataList = imgNew.getBytes(format: imgModule.Format.rgb);
+      //imgDataList = imgNew.getBytes();
 
       base46EncodedPic = base64Encode(imgDataList);
 
-      loggr.d('Image retrieved as string: ' + base46EncodedPic.length.toString());
+      print('Image retrieved as string: ' + base46EncodedPic);
+      print('\nchars: ' + base46EncodedPic.length.toString());
     } catch(e) {
       loggr.e('Error in retrieving and encoding the picture!');
       loggr.e(e);
+      Fluttertoast.showToast(msg: 'Error in retrieving image!', backgroundColor: Colors.red, textColor: Colors.white);
     }
 
     if (base46EncodedPic != null) {
       loggr.d('Contacting server, calling method...');
       var predVal = await getPrediction(base46EncodedPic);
 
+      predictedVal = predVal;
+
       setState(() {
         if (predVal != null) {
-          predictedVal[0] = int.parse(predVal[0]);
-          predictedVal[1] = int.parse(predVal[1]);
+          predictedVal = predVal;
         }
       });
     }
@@ -219,7 +271,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 setState(() {
                   RenderBox box = context.findRenderObject();
                   Offset point = box.globalToLocal(details.globalPosition);
-                  point = point.translate(-70.0, -320.0);//(AppBar().preferredSize.height));
+                  point = point.translate(-70.0, -320.0);//(AppBar().preferredSize.height)); // TODO: should not be hardcoded
 
                   points = List.from(points);
                   points.add(point);
@@ -262,8 +314,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
+              print(predictedVal);
             return Text(
-              predictedVal != null ? 'Predictions: $predictedVal[0], $predictedVal[1]' : ''
+              predictedVal != null ? 'Predictions: ' + predictedVal[0].toString() + ', ' + predictedVal[1].toString() : ''
             );
           }
           else {
@@ -316,7 +369,7 @@ class Handwriter extends CustomPainter {
 
     paint.color = Colors.white;
     paint.strokeCap = StrokeCap.round;
-    paint.strokeWidth = 22.0;
+    paint.strokeWidth = 18.0;
 
     for (int i = 0; i < points.length - 1; i++){
       if (points[i] != null && points[i + 1] != null) {
