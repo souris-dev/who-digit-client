@@ -9,11 +9,10 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:logger/logger.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:http/http.dart' as http;
-import 'package:image/image.dart' as imgModule;
 
 void main() {
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(systemNavigationBarColor: Colors.black));
+  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(systemNavigationBarColor: Colors.black, systemNavigationBarIconBrightness: Brightness.dark));
   runApp(MyApp());
 }
 
@@ -23,6 +22,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'WhoDigit',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
         primarySwatch: Colors.blue,
@@ -58,7 +58,7 @@ class _MyHomePageState extends State<MyHomePage> {
   List<String> predictedVal;
 
   bool askedToPredict = false;
-  bool pingedAndVerified = false;
+  bool pingAndVerifyProcessDone = false;
 
   void pingAndVerify() async {
       Fluttertoast.showToast(msg: 'Initializing...', backgroundColor: Colors.indigo, textColor: Colors.white);
@@ -67,22 +67,26 @@ class _MyHomePageState extends State<MyHomePage> {
       var uri = 'https://who-digit-webapp.herokuapp.com/';
 
       try {
-          loggr.d('Inititating connection with server...');
+          loggr.d('Initiating connection with server...');
           var resp = await cl.get(uri);
 
           if (resp.statusCode == 200) {
-              pingedAndVerified = true;
+              pingAndVerifyProcessDone = true;
               loggr.d('Initialization successful!');
+              Fluttertoast.showToast(msg: 'Initialization successful!', backgroundColor: Colors.indigo, textColor: Colors.white);
           }
           else {
+              pingAndVerifyProcessDone = true;
               throw Exception('Init failed: server error ' + resp.statusCode.toString());
           }
+
       } catch(e) {
           loggr.e(e);
           loggr.e('Initialization failed!');
           Fluttertoast.showToast(msg: 'Initialization failed!', backgroundColor: Colors.red, textColor: Colors.white);
           Fluttertoast.showToast(msg: 'Check your internet connection', backgroundColor: Colors.deepOrangeAccent, textColor: Colors.white);
       } finally {
+          pingAndVerifyProcessDone = true;
           cl.close();
       }
   }
@@ -298,9 +302,11 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
         onPressed: () {
           setState(() {
-            askedToPredict = true;
+            if (pingAndVerifyProcessDone)
+              askedToPredict = true;
           });
         },
+        color: pingAndVerifyProcessDone == true ? Colors.green : Colors.grey,
       ),
       SizedBox(
             width: double.infinity,
@@ -308,27 +314,27 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     ];
 
-    if (true) {
-      innerWidgets.add(FutureBuilder(
-        future: predict(),
 
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-              print(predictedVal);
-            return Text(
-              predictedVal != null ? 'Predictions: ' + predictedVal[0].toString() + ', ' + predictedVal[1].toString() : ''
-            );
-          }
-          else {
-            return SizedBox(
-              height: 38,
-              width: 38,
-              child: CircularProgressIndicator(),
-            );
-          }
-        },
-      ));
-    }
+    innerWidgets.add(FutureBuilder(
+      future: predict(),
+
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+            print(predictedVal);
+          return Text(
+            predictedVal != null ? 'Predictions: ' + predictedVal[0].toString() + ', ' + predictedVal[1].toString() : ''
+          );
+        }
+        else {
+          return SizedBox(
+            height: 38,
+            width: 38,
+            child: CircularProgressIndicator(),
+          );
+        }
+      },
+    ));
+
 
     Widget bodyAll = Scaffold(
       appBar: AppBar(
