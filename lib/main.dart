@@ -3,6 +3,7 @@ import 'dart:ffi';
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -86,7 +87,7 @@ class _MyHomePageState extends State<MyHomePage> {
           Fluttertoast.showToast(msg: 'Initialization failed!', backgroundColor: Colors.red, textColor: Colors.white);
           Fluttertoast.showToast(msg: 'Check your internet connection', backgroundColor: Colors.deepOrangeAccent, textColor: Colors.white);
       } finally {
-          pingAndVerifyProcessDone = true;
+          setState(() {pingAndVerifyProcessDone = true;});
           cl.close();
       }
   }
@@ -97,7 +98,7 @@ class _MyHomePageState extends State<MyHomePage> {
     drawArea = Handwriter(points);
 
     // We'll ping the server once to wake the server up
-    // and check that the internet and server are working
+    // and check that the internet and the server are working
 
     pingAndVerify();
   }
@@ -217,8 +218,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
       base46EncodedPic = base64Encode(imgDataList);
 
-      print('Image retrieved as string: ' + base46EncodedPic);
-      print('\nchars: ' + base46EncodedPic.length.toString());
+      //print('Image retrieved as string: ' + base46EncodedPic);
+      //print('\nchars: ' + base46EncodedPic.length.toString());
     } catch(e) {
       loggr.e('Error in retrieving and encoding the picture!');
       loggr.e(e);
@@ -339,7 +340,18 @@ class _MyHomePageState extends State<MyHomePage> {
     Widget bodyAll = Scaffold(
       appBar: AppBar(
 
-        title: Text(widget.title),
+        title: Row(
+          children: <Widget>[
+            Padding(
+              padding: EdgeInsets.only(top: 10, bottom: 10),
+              child: Image.asset('assets/4.0x/WhoDigit_launcher.png', height: 43, width: 43),
+            ),
+            Padding(
+              padding: EdgeInsets.only(left: 10),
+              child: Text('WhoDigit Client')
+            )
+          ],
+        ),
       ),
 
       body: Center(
